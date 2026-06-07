@@ -1,0 +1,6 @@
+{
+  "name": "IBEC Express",
+  "description": "Sistema de Gestão Financeira para transporte e logística - Controle de holerites, fluxo de caixa e gestão de frota.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
