@@ -10,6 +10,7 @@ import ClientesView from './components/ClientesView';
 import RelatoriosView from './components/RelatoriosView';
 
 import * as store from './lib/store';
+import { supabase } from './lib/supabase';
 import { Funcionario, Holerite, ContaPagar, Receita, Veiculo, Cliente } from './types';
 import { fmtMoeda, fmtData, calcDRE } from './lib/calculos';
 
@@ -47,6 +48,33 @@ export default function App() {
 
   // UI Toast notifications helper
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // Database Connection Diagnostics
+  const [dbStatus, setDbStatus] = useState<'checking' | 'connected' | 'error' | 'local'>('checking');
+  const [dbErrorDetails, setDbErrorDetails] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function checkSupabaseConnection() {
+      if (!supabase) {
+        setDbStatus('local');
+        return;
+      }
+      try {
+        setDbStatus('checking');
+        const { error } = await supabase.from('funcionarios').select('id').limit(1);
+        if (error) {
+          throw error;
+        }
+        setDbStatus('connected');
+        setDbErrorDetails(null);
+      } catch (err: any) {
+        console.error('[Supabase Diagnostics Error]', err);
+        setDbStatus('error');
+        setDbErrorDetails(err?.message || err?.details || JSON.stringify(err));
+      }
+    }
+    checkSupabaseConnection();
+  }, []);
 
   // Collective bargaining conventions settings state (stored in localStorage)
   const [convenioSalBase, setConvenioSalBase] = useState('1483.29');
@@ -504,9 +532,27 @@ export default function App() {
 
           <div className="flex items-center space-x-4">
             {/* Database status indicator */}
-            <div className="flex items-center space-x-1.5 px-2 py-1 rounded bg-purple-50 border border-purple-100 text-[10px] font-bold text-purple-900 uppercase font-mono">
-              <Globe className="w-3.5 h-3.5 text-purple-800 shrink-0" />
-              <span>Conexão SQLite Local</span>
+            <div className={`flex items-center space-x-1.5 px-2 py-1 rounded text-[10px] font-bold uppercase font-mono border transition-all ${
+              dbStatus === 'connected' 
+                ? 'bg-emerald-50 border-emerald-250 text-emerald-800 hover:bg-emerald-100' 
+                : dbStatus === 'checking'
+                ? 'bg-amber-50 border-amber-250 text-amber-800 animate-pulse'
+                : dbStatus === 'error'
+                ? 'bg-rose-50 border-rose-250 text-rose-800 hover:bg-rose-100 cursor-pointer'
+                : 'bg-gray-150 border-gray-255 text-gray-700 hover:bg-gray-200'
+            }`}
+            title={dbStatus === 'error' ? `Clique para ver detalhes do erro: ${dbErrorDetails}` : undefined}
+            onClick={() => {
+              setCurrentTab('configuracoes');
+            }}
+            >
+              <Globe className={`w-3.5 h-3.5 shrink-0 ${dbStatus === 'connected' ? 'text-emerald-600 animate-pulse' : dbStatus === 'error' ? 'text-rose-600 animate-bounce' : 'text-gray-500'}`} />
+              <span>
+                {dbStatus === 'connected' && 'Supabase Cloud Ativo'}
+                {dbStatus === 'checking' && 'Testando Conexão...'}
+                {dbStatus === 'error' && 'Erro no Supabase'}
+                {dbStatus === 'local' && 'Demonstração Offline (Local)'}
+              </span>
             </div>
 
             {/* Notifications Alert block */}
@@ -675,6 +721,103 @@ export default function App() {
               <div className="bg-white p-5 rounded-xl border border-gray-150 shadow-sm">
                 <h2 className="text-lg font-bold text-gray-900 font-sans">Parâmetros de Convenção Coletiva & Normas</h2>
                 <p className="text-xs text-gray-500">Ajustes dos índices de referência sindicais aplicados automaticamente no re-cálculo da folha salarial.</p>
+              </div>
+
+              {/* DIAGNÓSTICO DO BANCO SUPABASE */}
+              <div className="bg-white p-6 rounded-xl border border-gray-150 shadow-sm space-y-4">
+                <div className="flex items-center justify-between border-b border-gray-100 pb-3">
+                  <div>
+                    <h3 className="text-sm font-bold text-gray-900 font-sans">Diagnóstico de Conexão do Supabase</h3>
+                    <p className="text-[11px] text-gray-500">Status em tempo real das tabelas PostgreSQL hospedadas no Supabase.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (!supabase) {
+                        setDbStatus('local');
+                        triggerToast('Conexão operando em modo LocalStorage (Sem chaves).');
+                        return;
+                      }
+                      setDbStatus('checking');
+                      try {
+                        const { error } = await supabase.from('funcionarios').select('id').limit(1);
+                        if (error) throw error;
+                        setDbStatus('connected');
+                        setDbErrorDetails(null);
+                        triggerToast('Conexão com o Supabase revalidada com sucesso!');
+                      } catch (err: any) {
+                        setDbStatus('error');
+                        setDbErrorDetails(err?.message || err?.details || JSON.stringify(err));
+                        triggerToast('Erro na verificação da conexão Supabase.');
+                      }
+                    }}
+                    className="text-[10px] font-bold text-purple-900 bg-purple-50 hover:bg-purple-100 px-3 py-1.5 rounded border border-purple-200 transition-colors cursor-pointer"
+                  >
+                    Testar Conexão Novamente
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Status Indicator Panel */}
+                  <div className="p-4 rounded-lg bg-gray-50 border border-gray-200 space-y-2">
+                    <span className="text-[10px] text-gray-500 uppercase font-bold tracking-wider block font-mono">Status do Driver</span>
+                    <div className="flex items-center space-x-2">
+                      <div className={`w-2.5 h-2.5 rounded-full ${
+                        dbStatus === 'connected' ? 'bg-emerald-500' :
+                        dbStatus === 'checking' ? 'bg-amber-500 animate-pulse' :
+                        dbStatus === 'error' ? 'bg-rose-500' : 'bg-gray-400'
+                      }`} />
+                      <span className="font-bold text-xs text-gray-900">
+                        {dbStatus === 'connected' && 'Supabase Cloud Conectado (Produção)'}
+                        {dbStatus === 'checking' && 'Processando ping sintático...'}
+                        {dbStatus === 'error' && 'Conexão Supabase com Erro'}
+                        {dbStatus === 'local' && 'Modo Offline - LocalStorage Ativo'}
+                      </span>
+                    </div>
+
+                    {dbStatus === 'local' && (
+                      <p className="text-[11px] text-gray-500 leading-relaxed pt-1">
+                        O aplicativo está operando em modo de demonstração isolado usando o mecanismo de LocalStorage no navegador. Isso ocorre porque as variáveis de ambiente <code className="bg-gray-150 px-1 py-0.5 rounded font-mono text-[10px]">VITE_SUPABASE_URL</code> e <code className="bg-gray-150 px-1 py-0.5 rounded font-mono text-[10px]">VITE_SUPABASE_ANON_KEY</code> não estão preenchidas ou estão com placeholders padrão.
+                      </p>
+                    )}
+
+                    {dbStatus === 'connected' && (
+                      <p className="text-[11px] text-emerald-800 leading-relaxed pt-1">
+                        Sincronização em nuvem totalmente operacional! Todas as inserções, atualizações de holerites, controle de frotas e fluxos de despesas estão sendo gravados diretamente no seu banco de dados PostgreSQL no Supabase.
+                      </p>
+                    )}
+
+                    {dbStatus === 'error' && (
+                      <div className="space-y-2 pt-1 text-[11px]">
+                        <p className="text-rose-700 leading-relaxed">
+                          A API do Supabase respondeu com um erro. Isso geralmente indica que a estrutura de tabelas ainda não foi criada ou que as variáveis de ambiente ou políticas de acesso (RLS) estão pendentes.
+                        </p>
+                        <div className="bg-rose-50 border border-rose-100 p-2.5 rounded text-[10px] font-mono text-rose-800 break-all overflow-x-auto select-all">
+                          <strong>Erro retornado:</strong> {dbErrorDetails}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Schema Info */}
+                  <div className="p-4 rounded-lg bg-gray-50 border border-gray-200 space-y-2 text-[11px]">
+                    <span className="text-[10px] text-gray-500 uppercase font-bold tracking-wider block font-mono">Como Sincronizar o Banco Supabase?</span>
+                    <p className="text-gray-600 leading-relaxed">
+                      Se você obteve um erro com o código <code className="bg-gray-150 px-1 py-0.5 rounded font-mono text-[10px]">42P01</code> (Relation does not exist), significa que a estrutura das tabelas está vazia no seu painel Supabase.
+                    </p>
+                    <p className="text-gray-600 leading-relaxed">
+                      <strong>Para resolver isto e ativar a sincronização:</strong>
+                    </p>
+                    <ol className="list-decimal pl-4 space-y-1 text-gray-600">
+                      <li>Abra o arquivo <code className="bg-gray-150 px-1 py-0.5 rounded font-mono text-[10px]">/schema.sql</code> gerado na raiz da aplicação.</li>
+                      <li>Copie o conteúdo SQL completo daquele arquivo.</li>
+                      <li>Abra o seu painel do <strong>Supabase</strong> no navegador.</li>
+                      <li>Acesse a aba <strong>SQL Editor</strong> e crie uma nova consulta (New Query).</li>
+                      <li>Cole o conteúdo do SQL e clique em <strong>Run</strong> para executar.</li>
+                      <li>Pronto! Recarregue a página da aplicação para desfrutar da sincronização em tempo real.</li>
+                    </ol>
+                  </div>
+                </div>
               </div>
 
               {/* Convention adjustment Form */}

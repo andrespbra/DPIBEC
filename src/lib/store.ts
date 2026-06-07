@@ -467,6 +467,15 @@ export const deleteVeiculo = async (id: string): Promise<boolean> => {
 // --- MANUTENÇÕES OPERATORS ---
 
 export const getManutencoes = async (): Promise<ManutencaoVeiculo[]> => {
+  if (supabase) {
+    try {
+      const { data, error } = await supabase.from('manutencoes').select('*').order('data_servico', { ascending: false });
+      if (error) throw error;
+      if (data && data.length > 0) return data as ManutencaoVeiculo[];
+    } catch (e) {
+      console.warn('[Supabase] Failed query to manutencoes. Falling back to LocalStorage.', e);
+    }
+  }
   return JSON.parse(localStorage.getItem('ibec_manutencoes') || '[]');
 };
 
@@ -479,6 +488,18 @@ export const saveManutencao = async (manutencao: Omit<ManutencaoVeiculo, 'id'> &
     id: newId,
     created_at: manutencao.created_at || new Date().toISOString()
   };
+
+  if (supabase) {
+    try {
+      const query = isNew
+        ? supabase.from('manutencoes').insert([saved])
+        : supabase.from('manutencoes').update(saved).eq('id', newId);
+      const { error } = await query;
+      if (error) throw error;
+    } catch (e) {
+      console.warn('[Supabase] Failed save manutencao. Saving to LocalStorage instead.', e);
+    }
+  }
 
   // Add into list
   const items = JSON.parse(localStorage.getItem('ibec_manutencoes') || '[]');
@@ -510,6 +531,15 @@ export const saveManutencao = async (manutencao: Omit<ManutencaoVeiculo, 'id'> &
 };
 
 export const deleteManutencao = async (id: string): Promise<boolean> => {
+  if (supabase) {
+    try {
+      const { error } = await supabase.from('manutencoes').delete().eq('id', id);
+      if (error) throw error;
+    } catch (e) {
+      console.warn('[Supabase] Failed delete manutencao.', e);
+    }
+  }
+
   const items = JSON.parse(localStorage.getItem('ibec_manutencoes') || '[]');
   const filtered = items.filter((i: ManutencaoVeiculo) => i.id !== id);
   localStorage.setItem('ibec_manutencoes', JSON.stringify(filtered));
